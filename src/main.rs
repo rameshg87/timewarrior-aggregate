@@ -3,17 +3,43 @@
 // ~/.timewarrior/aggregate directory. The tool is supposed to be helpful in identifying the
 // various things required to understand how to use it.
 
-use log::{debug, error, info};
+use chrono::{self, NaiveDateTime};
+use log::{debug, error};
 use std::collections::HashSet;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::io::{self, Read};
+use std::ops::Add;
 use std::path::Path;
 use std::process;
 
 struct InterestingTagSet {
     tag_set: HashSet<String>,
     time_spent: chrono::Duration,
+}
+
+fn format_duration(duration: chrono::Duration) -> String {
+    let hours = duration.num_hours();
+    let minutes = duration.num_minutes() % 60;
+    format!("{} hrs {} mins", hours, minutes)
+}
+
+impl fmt::Display for InterestingTagSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tags_sorted = Vec::new();
+        for tag in self.tag_set.iter() {
+            tags_sorted.push(tag.clone());
+        }
+        tags_sorted.sort();
+        let duration = format_duration(self.time_spent);
+        write!(
+            f,
+            "| {0: <20} | {1: <15} |",
+            tags_sorted.join(" "),
+            duration
+        )
+    }
 }
 
 impl InterestingTagSet {
@@ -57,7 +83,7 @@ fn main() {
         debug!("found tag_set {:?}", tag_set);
         interesting_tag_sets.push(InterestingTagSet::new(tag_set))
     }
-    info!("found {} tags from tags file", interesting_tag_sets.len());
+    debug!("found {} tags from tags file", interesting_tag_sets.len());
 
     // Accept the standard input and retrieve the individual items
     let mut buffer = String::new();
@@ -77,7 +103,7 @@ fn main() {
                 tag_set.insert(tag.as_str().expect("Unable to parse string").to_string());
             }
             let mut max_matching_tags_count = 0;
-            let mut max_matching_tag_set: Option<&InterestingTagSet> = None;
+            let mut max_matching_tag_set: Option<&mut InterestingTagSet> = None;
             for interesting_tag_set in interesting_tag_sets.iter_mut() {
                 let intersection: HashSet<_> =
                     interesting_tag_set.tag_set.intersection(&tag_set).collect();
@@ -86,16 +112,30 @@ fn main() {
                     max_matching_tag_set = Some(interesting_tag_set);
                 }
             }
-            // let start = parsed_json["start"].as_str().unwrap();
-            // debug!("start {}", start);
-            // debug!(
-            //     "start {:?}",
-            //     chrono::DateTime::parse_from_str(start, "%Y%m%dT%H%M%SZ").unwrap()
-            // );
-            // match max_matching_tag_set {
-            //     Some(value) => debug!("{:?}", value.tag_set),
-            //     None => {}
-            // }
+            if let Some(matching_tag_set) = max_matching_tag_set {
+                let start = parsed_json["start"].as_str().unwrap();
+                let start = NaiveDateTime::parse_from_str(start, "%Y%m%dT%H%M%SZ").unwrap();
+                let end;
+                if let Some(value) = parsed_json["end"].as_str() {
+                    end = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ").unwrap();
+                } else {
+                    end = chrono::Local::now().naive_utc();
+                }
+                matching_tag_set.time_spent = matching_tag_set
+                    .time_spent
+                    .add(end.signed_duration_since(start));
+                debug!("time_spent {:?}", matching_tag_set.time_spent);
+            }
         }
     }
+
+    println!("| {0: <20} | {1: <15} |", "group", "duration");
+    let mut total = chrono::Duration::seconds(0);
+    for interesting_tag_set in interesting_tag_sets {
+        if interesting_tag_set.time_spent.num_seconds() > 0 {
+            println!("{}", interesting_tag_set);
+            total = total.add(interesting_tag_set.time_spent);
+        }
+    }
+    println!("| {0: <20} | {1: <15} |", "total", format_duration(total));
 }
