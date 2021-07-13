@@ -3,7 +3,7 @@
 // ~/.timewarrior/aggregate directory. The tool is supposed to be helpful in identifying the
 // various things required to understand how to use it.
 
-use chrono::{self, NaiveDateTime};
+use chrono::{Datelike, Duration, Local, NaiveDateTime};
 use log::{debug, error};
 use std::collections::HashSet;
 use std::env;
@@ -16,10 +16,11 @@ use std::process;
 
 struct InterestingTagSet {
     tag_set: HashSet<String>,
-    time_spent: chrono::Duration,
+    time_spent: Duration,
+    time_allocated: Duration,
 }
 
-fn format_duration(duration: chrono::Duration) -> String {
+fn format_duration(duration: Duration) -> String {
     let hours = duration.num_hours();
     let minutes = duration.num_minutes() % 60;
     format!("{} hrs {} mins", hours, minutes)
@@ -32,12 +33,19 @@ impl fmt::Display for InterestingTagSet {
             tags_sorted.push(tag.clone());
         }
         tags_sorted.sort();
-        let duration = format_duration(self.time_spent);
+        let spent = format_duration(self.time_spent);
+        let allocated = format_duration(self.time_allocated);
+        let remaining = match self.time_allocated.checked_sub(&self.time_spent) {
+            Some(val) => format_duration(val),
+            None => format_duration(chrono::Duration::seconds(0)),
+        };
         write!(
             f,
-            "| {0: <20} | {1: <15} |",
+            "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
             tags_sorted.join(" "),
-            duration
+            spent,
+            allocated,
+            remaining
         )
     }
 }
@@ -46,7 +54,8 @@ impl InterestingTagSet {
     fn new(tag_set: HashSet<String>) -> InterestingTagSet {
         return InterestingTagSet {
             tag_set,
-            time_spent: chrono::Duration::seconds(0),
+            time_spent: Duration::seconds(0),
+            time_allocated: Duration::seconds(0),
         };
     }
 }
@@ -63,7 +72,7 @@ fn main() {
     debug!("{} exists", config_dir);
 
     // Check if ~/.timewarrior/aggregate/tags.json file exists.
-    let tags_file_path = config_dir + "/tags.json";
+    let tags_file_path = config_dir.clone() + "/tags.json";
     let path = Path::new(&tags_file_path);
     if !path.exists() {
         error!("{} doesn't exist", tags_file_path);
@@ -84,6 +93,42 @@ fn main() {
         interesting_tag_sets.push(InterestingTagSet::new(tag_set))
     }
     debug!("found {} tags from tags file", interesting_tag_sets.len());
+
+    // If DAILY environment variable is set, check if
+    // ~/.timewarrior/aggregate/<year>/<month>/<day>.json file exists.
+    let now = Local::now().naive_utc();
+    let today = now.date();
+    let year = today.year();
+    let month = today.month();
+    let day = today.day();
+    let allocation_file_path = format!("{}/allocation/{}/{}/{}.json", config_dir, year, month, day);
+    debug!("allocation_file_path {}", allocation_file_path);
+    let path = Path::new(&allocation_file_path);
+    if path.exists() {
+        let allocation_file_contents =
+            fs::read_to_string(allocation_file_path).expect("Unable to read tags file");
+        let parsed_json =
+            json::parse(&allocation_file_contents).expect("Unable to parse json file");
+        for tag_group_setting in parsed_json.members() {
+            let mut current_tag_set = HashSet::new();
+            for tag in tag_group_setting["tags"].members() {
+                current_tag_set.insert(tag.as_str().expect("Unable to parse string").to_string());
+            }
+            debug!("found allocation for tag_set {:?}", current_tag_set);
+            for interesting_tag_set in interesting_tag_sets.iter_mut() {
+                let intersection: HashSet<_> = interesting_tag_set
+                    .tag_set
+                    .intersection(&current_tag_set)
+                    .collect();
+                if intersection.len() == interesting_tag_set.tag_set.len() {
+                    let allocation: f64 =
+                        tag_group_setting["allocation"].as_number().unwrap().into();
+                    let allocation = (allocation * 3600.00) as i64;
+                    interesting_tag_set.time_allocated = chrono::Duration::seconds(allocation);
+                }
+            }
+        }
+    }
 
     // Accept the standard input and retrieve the individual items
     let mut buffer = String::new();
@@ -119,7 +164,7 @@ fn main() {
                 if let Some(value) = parsed_json["end"].as_str() {
                     end = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%SZ").unwrap();
                 } else {
-                    end = chrono::Local::now().naive_utc();
+                    end = Local::now().naive_utc();
                 }
                 matching_tag_set.time_spent = matching_tag_set
                     .time_spent
@@ -129,13 +174,29 @@ fn main() {
         }
     }
 
-    println!("| {0: <20} | {1: <15} |", "group", "duration");
-    let mut total = chrono::Duration::seconds(0);
+    println!(
+        "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+        "group", "spent", "allocated", "remaining"
+    );
+    let mut total_spent = Duration::seconds(0);
+    let mut total_allocated = Duration::seconds(0);
     for interesting_tag_set in interesting_tag_sets {
         if interesting_tag_set.time_spent.num_seconds() > 0 {
             println!("{}", interesting_tag_set);
-            total = total.add(interesting_tag_set.time_spent);
+            total_spent = total_spent.add(interesting_tag_set.time_spent);
+            total_allocated = total_allocated.add(interesting_tag_set.time_allocated);
         }
     }
-    println!("| {0: <20} | {1: <15} |", "total", format_duration(total));
+
+    let total_remaining = match total_allocated.checked_sub(&total_spent) {
+        Some(val) => val,
+        None => chrono::Duration::seconds(0),
+    };
+    println!(
+        "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+        "total",
+        format_duration(total_spent),
+        format_duration(total_allocated),
+        format_duration(total_remaining),
+    );
 }
