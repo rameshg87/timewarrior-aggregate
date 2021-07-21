@@ -14,6 +14,9 @@ use std::ops::Add;
 use std::path::Path;
 use std::process;
 
+pub mod tagset;
+pub mod workgroup;
+
 struct InterestingTagSet {
     tag_set: HashSet<String>,
     time_spent: Duration,
