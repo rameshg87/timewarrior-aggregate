@@ -15,6 +15,7 @@ use std::path::Path;
 use std::process;
 
 pub mod tagset;
+pub mod twentry;
 pub mod workgroup;
 
 struct InterestingTagSet {

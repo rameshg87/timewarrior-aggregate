@@ -1,50 +1,56 @@
-use log::debug;
+use json::JsonValue;
 use std::collections::HashSet;
-use std::fs;
 
+#[derive(Debug)]
 pub struct TagSet {
-    tagset: HashSet<String>,
+    pub tags: HashSet<String>,
 }
 
 impl TagSet {
-    fn num_matches(&self, other: &TagSet) -> usize {
-        let intersection: HashSet<_> = self.tagset.intersection(&(other.tagset)).collect();
-        intersection.len()
+    pub fn parse_from_json_value(jv: &JsonValue) -> Self {
+        let mut tags = HashSet::new();
+        for tag in jv["tags"].members() {
+            tags.insert(tag.as_str().expect("Unable to parse string").to_string());
+        }
+        TagSet { tags }
+    }
+
+    pub fn has_all_tags_of(&self, other: &TagSet) -> bool {
+        let intersection: HashSet<_> = self.tags.intersection(&(other.tags)).collect();
+        intersection.len() == self.tags.len()
     }
 }
 
-pub struct TagSets {
-    tagsets: Vec<TagSet>,
-}
+#[cfg(test)]
+mod test {
+    use super::TagSet;
 
-impl TagSets {
-    fn from(tags_file_path: &String) -> Result<Self, &str> {
-        let tags_file_contents =
-            fs::read_to_string(tags_file_path).expect("Unable to read tags file");
-        let parsed_json = json::parse(&tags_file_contents).expect("Unable to parse json file");
-        let mut tagsets = TagSets {
-            tagsets: Vec::new(),
-        };
-        for tag_group in parsed_json.members() {
-            let mut tagset = HashSet::new();
-            for tag in tag_group.members() {
-                tagset.insert(tag.as_str().expect("Unable to parse string").to_string());
-            }
-            debug!("found tag_set {:?}", tagset);
-            tagsets.tagsets.push(TagSet { tagset });
-        }
-        debug!("found {} tags from tags file", tagsets.tagsets.len());
-        Ok(tagsets)
+    #[test]
+    fn parse_from_json_value() {
+        let s = "{ \"tags\": [ \"office\", \"project\" ] }";
+        let jv = json::parse(&s).unwrap();
+        let tagset = TagSet::parse_from_json_value(&jv);
+
+        assert_eq!(tagset.tags.len(), 2);
+        assert!(tagset.tags.contains("office"));
+        assert!(tagset.tags.contains("project"));
     }
 
-    fn all_match(&self, other_tagset: &TagSet) -> Option<&TagSet> {
-        let mut all_match_tagset = None;
-        for tagset in self.tagsets.iter() {
-            if tagset.num_matches(other_tagset) == tagset.tagset.len() {
-                all_match_tagset = Some(tagset);
-                break;
-            }
-        }
-        all_match_tagset
+    #[test]
+    fn has_all_tags_of() {
+        let s = "{ \"tags\": [ \"office\", \"project\" ] }";
+        let jv = json::parse(&s).unwrap();
+        let tagset1 = TagSet::parse_from_json_value(&jv);
+
+        let s = "{ \"tags\": [ \"office\", \"project\", \"foo\" ] }";
+        let jv = json::parse(&s).unwrap();
+        let tagset2 = TagSet::parse_from_json_value(&jv);
+
+        let s = "{ \"tags\": [ \"office\", \"maintenance\" ] }";
+        let jv = json::parse(&s).unwrap();
+        let tagset3 = TagSet::parse_from_json_value(&jv);
+
+        assert!(tagset1.has_all_tags_of(&tagset2));
+        assert!(!tagset1.has_all_tags_of(&tagset3));
     }
 }
