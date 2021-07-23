@@ -1,6 +1,8 @@
 use crate::tagset::TagSet;
 use chrono::Duration;
 use json::JsonValue;
+use std::env;
+use std::fmt;
 use std::ops::Add;
 
 use crate::twentry::TimeWarriorEntry;
@@ -35,6 +37,44 @@ impl WorkGroup {
 
     pub fn process(&mut self, twe: &TimeWarriorEntry) {
         self.time_spent = self.time_spent.add(twe.duration());
+    }
+}
+
+fn format_duration(duration: Duration) -> String {
+    let hours = duration.num_hours();
+    let minutes = duration.num_minutes() % 60;
+    format!("{} hrs {} mins", hours, minutes)
+}
+
+impl fmt::Display for WorkGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tags_sorted = Vec::new();
+        for tag in self.tagset.tags.iter() {
+            tags_sorted.push(tag.clone());
+        }
+        tags_sorted.sort();
+        let spent = format_duration(self.time_spent);
+        let allocated = format_duration(self.time_allocated);
+        let remaining = match self.time_allocated.checked_sub(&self.time_spent) {
+            Some(val) => format_duration(val),
+            None => format_duration(chrono::Duration::seconds(0)),
+        };
+        let skip_allocated = match env::var("SKIP_ALLOCATED") {
+            Ok(_) => true,
+            Err(_) => false,
+        };
+        if skip_allocated {
+            write!(f, "| {0: <20} | {1: <15}", tags_sorted.join(" "), spent)
+        } else {
+            write!(
+                f,
+                "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+                tags_sorted.join(" "),
+                spent,
+                allocated,
+                remaining
+            )
+        }
     }
 }
 
