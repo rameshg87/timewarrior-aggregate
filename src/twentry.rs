@@ -30,6 +30,10 @@ impl TimeWarriorEntry {
 
         TimeWarriorEntry { tagset, start, end }
     }
+
+    pub fn duration(&self) -> chrono::Duration {
+        self.end.signed_duration_since(self.start)
+    }
 }
 
 #[cfg(test)]
@@ -72,5 +76,13 @@ mod test {
             twe.start.format("%Y-%m-%d %H:%M:%S").to_string(),
             "2021-07-22 15:23:28"
         );
+    }
+
+    #[test]
+    fn duration() {
+        let s = "{\"id\":3,\"start\":\"20210722T152328Z\",\"end\":\"20210722T153753Z\",\"tags\":[\"Rust talks\",\"learning\",\"personal\"]}";
+        let jv = json::parse(&s).unwrap();
+        let twe = TimeWarriorEntry::parse_from_json_value(&jv);
+        assert_eq!(twe.duration().num_seconds(), 865);
     }
 }
