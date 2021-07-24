@@ -3,21 +3,18 @@
 // ~/.timewarrior/aggregate directory. The tool is supposed to be helpful in identifying the
 // various things required to understand how to use it.
 
-use chrono::{Datelike, Duration, Local};
-use log::{debug, error};
+use chrono::Duration;
 use std::env;
-use std::fs;
 use std::io::{self, Read};
 use std::ops::Add;
-use std::path::Path;
-use std::process;
 
+pub mod config;
 pub mod tagset;
 pub mod twentry;
+pub mod twinput;
 pub mod workgroup;
 
-use crate::twentry::TimeWarriorEntry;
-use crate::workgroup::WorkGroup;
+use crate::twinput::TimeWarriorInput;
 
 fn format_duration(duration: Duration) -> String {
     let hours = duration.num_hours();
@@ -28,65 +25,20 @@ fn format_duration(duration: Duration) -> String {
 fn main() {
     // Check if ~/.timewarrior/aggregate directory exists.
     env_logger::init();
-    let config_dir = env::var("HOME").unwrap() + "/.timewarrior/aggregate";
-    let path = Path::new(&config_dir);
-    if !path.exists() {
-        error!("{} doesn't exist", config_dir);
-        process::exit(1);
-    }
-    debug!("{} exists", config_dir);
-
-    // Check if ~/.timewarrior/aggregate/tags.json file exists.
-    let tags_file_path = config_dir.clone() + "/tags.json";
-    let path = Path::new(&tags_file_path);
-    if !path.exists() {
-        error!("{} doesn't exist", tags_file_path);
-        process::exit(1);
-    }
-    debug!("{} exists", tags_file_path);
-
-    // If DAILY environment variable is set, check if
-    // ~/.timewarrior/aggregate/<year>/<month>/<day>.json file exists.
-    let now = Local::now().naive_utc();
-    let today = now.date();
-    let year = today.year();
-    let month = today.month();
-    let day = today.day();
-    let allocation_file_path = format!("{}/allocation/{}/{}/{}.json", config_dir, year, month, day);
-    debug!("allocation_file_path {}", allocation_file_path);
-    let path = Path::new(&allocation_file_path);
-    if !path.exists() {
-        error!("{} doesn't exist", allocation_file_path);
-        process::exit(1);
-    }
-
-    let allocation_file_contents =
-        fs::read_to_string(allocation_file_path).expect("Unable to read tags file");
-    let parsed_json = json::parse(&allocation_file_contents).expect("Unable to parse json file");
-    let mut workgroups = Vec::new();
-    for jv in parsed_json.members() {
-        workgroups.push(WorkGroup::parse_from_json_value(jv));
-    }
 
     // Accept the standard input and retrieve the individual items
     let mut buffer = String::new();
     io::stdin()
         .read_to_string(&mut buffer)
         .expect("Unable to read standard input");
-    for line in buffer.lines() {
-        if line.starts_with("{") {
-            debug!("line {}", line);
-            let line = match line.strip_suffix(",") {
-                Some(val) => val,
-                None => line,
-            };
-            let jv = json::parse(line).expect("Unable to parse json");
-            let twentry = TimeWarriorEntry::parse_from_json_value(&jv);
-            for workgroup in workgroups.iter_mut() {
-                if workgroup.matches(&twentry) {
-                    workgroup.process(&twentry);
-                    break;
-                }
+    let twinput = TimeWarriorInput::parse_from_str(&buffer);
+    let mut workgroups = config::get_workgroups(&twinput.start, &twinput.end).unwrap();
+
+    for twentry in twinput.twentries.iter() {
+        for workgroup in workgroups.iter_mut() {
+            if workgroup.matches(&twentry) {
+                workgroup.process(&twentry);
+                break;
             }
         }
     }
