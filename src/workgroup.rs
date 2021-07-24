@@ -1,11 +1,16 @@
 use crate::tagset::TagSet;
 use chrono::Duration;
+use chrono::{Datelike, Local, NaiveDateTime, TimeZone};
 use json::JsonValue;
 use std::env;
 use std::fmt;
+use std::fs;
 use std::ops::Add;
 
+use log::debug;
+
 use crate::twentry::TimeWarriorEntry;
+use crate::twinput::TimeWarriorInput;
 
 pub struct WorkGroup {
     pub tagset: TagSet,
@@ -59,23 +64,101 @@ impl fmt::Display for WorkGroup {
             Some(val) => format_duration(val),
             None => format_duration(chrono::Duration::seconds(0)),
         };
-        let skip_allocated = match env::var("SKIP_ALLOCATED") {
-            Ok(_) => true,
-            Err(_) => false,
-        };
-        if skip_allocated {
-            write!(f, "| {0: <20} | {1: <15}", tags_sorted.join(" "), spent)
-        } else {
-            write!(
-                f,
-                "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
-                tags_sorted.join(" "),
-                spent,
-                allocated,
-                remaining
-            )
+        write!(
+            f,
+            "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+            tags_sorted.join(" "),
+            spent,
+            allocated,
+            remaining
+        )
+    }
+}
+
+pub fn get_workgroups(twinput: &TimeWarriorInput) -> Result<Vec<WorkGroup>, String> {
+    // let config_dir = env::var("HOME").unwrap() + "/.timewarrior/aggregate";
+    // //let workgroups = Vec::new();
+    let start = NaiveDateTime::parse_from_str(&twinput.start, "%Y%m%dT%H%M%SZ").unwrap();
+    let end = NaiveDateTime::parse_from_str(&twinput.end, "%Y%m%dT%H%M%SZ").unwrap();
+    let duration = end.signed_duration_since(start);
+
+    let config_dir = env::var("HOME").unwrap() + "/.timewarrior/aggregate";
+    let start = Local.from_utc_datetime(&start).date();
+    let end = Local.from_utc_datetime(&end).date();
+
+    let allocation_file_path;
+    if duration.num_days() == 1 {
+        let year = start.year();
+        let month = start.month();
+        let day = start.day();
+        allocation_file_path = format!("{}/allocation/{}/{}/{}.json", config_dir, year, month, day);
+    } else if duration.num_days() == 7 {
+        let year = start.year();
+        let month = start.month();
+        let day = start.day();
+        allocation_file_path = format!(
+            "{}/allocation/{}/{}/week-of-{}.json",
+            config_dir, year, month, day
+        );
+    } else {
+        return Err(format!(
+            "Unsupported duration of {} days. Start = {}, End = {}",
+            duration.num_days(),
+            start,
+            end
+        )
+        .to_string());
+    }
+
+    debug!("allocation_file_path {}", allocation_file_path);
+
+    let error_msg = format!("Unable to read file {}", allocation_file_path);
+    let allocation_file_contents = fs::read_to_string(allocation_file_path).expect(&error_msg);
+    let parsed_json = json::parse(&allocation_file_contents).expect("Unable to parse json file");
+    let mut workgroups = Vec::new();
+    for jv in parsed_json.members() {
+        workgroups.push(WorkGroup::parse_from_json_value(jv));
+    }
+    Ok(workgroups)
+}
+
+pub fn process(twinput: &TimeWarriorInput, workgroups: &mut Vec<WorkGroup>) {
+    for twentry in twinput.twentries.iter() {
+        for workgroup in workgroups.iter_mut() {
+            if workgroup.matches(&twentry) {
+                workgroup.process(&twentry);
+                break;
+            }
         }
     }
+}
+
+pub fn print_result(workgroups: &Vec<WorkGroup>) {
+    println!(
+        "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+        "group", "spent", "allocated", "remaining"
+    );
+    let mut total_spent = Duration::seconds(0);
+    let mut total_allocated = Duration::seconds(0);
+    for workgroup in workgroups {
+        if workgroup.time_spent.num_seconds() > 0 {
+            println!("{}", workgroup);
+            total_spent = total_spent.add(workgroup.time_spent);
+            total_allocated = total_allocated.add(workgroup.time_allocated);
+        }
+    }
+
+    let total_remaining = match total_allocated.checked_sub(&total_spent) {
+        Some(val) => val,
+        None => chrono::Duration::seconds(0),
+    };
+    println!(
+        "| {0: <20} | {1: <15} | {2: <15} | {3: <15}",
+        "total",
+        format_duration(total_spent),
+        format_duration(total_allocated),
+        format_duration(total_remaining),
+    );
 }
 
 #[cfg(test)]
