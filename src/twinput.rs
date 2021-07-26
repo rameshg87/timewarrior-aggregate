@@ -1,7 +1,5 @@
 use crate::twentry::TimeWarriorEntry;
 use log::debug;
-use std::env;
-use std::path::PathBuf;
 
 pub struct TimeWarriorInput {
     pub start: String,
@@ -35,19 +33,6 @@ impl TimeWarriorInput {
             }
         }
         if start.len() == 0 || end.len() == 0 {
-            let current_exe = std::env::current_exe().unwrap();
-            let mut expected_exe = PathBuf::new();
-            expected_exe.push(env::var("HOME").unwrap());
-            expected_exe.push(".timewarrior");
-            expected_exe.push("extensions");
-            expected_exe.push("aggregate");
-            if current_exe != expected_exe {
-                let current_exe = current_exe.as_path().to_str().unwrap();
-                let expected_exe = expected_exe.as_path().to_str().unwrap();
-                return Err(
-                    format!("This binary is supposed to be installed in {} inorder for it to be an extension of timewarrior.\nCurrently it was executed from {}\n", expected_exe, current_exe)
-                );
-            }
             return Err(
                 "Unable to find timewarrior passed statistics in standard input.\nWas this program run directly? This program is supposed to be invoked by timewarrior.\n".to_string()
             );
