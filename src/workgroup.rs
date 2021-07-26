@@ -12,6 +12,32 @@ use log::debug;
 use crate::twentry::TimeWarriorEntry;
 use crate::twinput::TimeWarriorInput;
 
+static SAMPLE: &'static str = "Here is a sample config to get started:
+[
+    {
+        \"tags\": [
+            \"office\",
+            \"project\"
+        ],
+        \"allocation\": 3
+    },
+    {
+        \"tags\": [
+            \"office\",
+            \"maintenance\"
+        ],
+        \"allocation\": 3
+    },
+    {
+        \"tags\": [
+            \"office\",
+            \"review\"
+        ],
+        \"allocation\": 1
+    },
+]
+";
+
 pub struct WorkGroup {
     pub tagset: TagSet,
     pub time_allocated: Duration,
@@ -100,12 +126,17 @@ pub fn get_workgroups(twinput: &TimeWarriorInput) -> Result<Vec<WorkGroup>, Stri
             );
             match fs::read_to_string(&allocation_file_path) {
                 Ok(val) => val,
-                Err(_) => {
-                    return Err(format!(
-                        "Unable to open the workgroups definition file for the day {} at {}",
+                Err(_) => match env::var("SAMPLE") {
+                    Ok(_) => {
+                        return Err(SAMPLE.to_string());
+                    }
+                    Err(_) => {
+                        return Err(format!(
+                        "Unable to open the workgroups definition file for the day {} at {}.\nRerun the same command with SAMPLE=1 for a sample json file.",
                         start, allocation_file_path
                     ));
-                }
+                    }
+                },
             }
         }
         7 => {
@@ -119,12 +150,17 @@ pub fn get_workgroups(twinput: &TimeWarriorInput) -> Result<Vec<WorkGroup>, Stri
             );
             match fs::read_to_string(&allocation_file_path) {
                 Ok(val) => val,
-                Err(_) => {
-                    return Err(format!(
-                        "Unable to open the workgroups definition file for the week starting on {} at {}",
+                Err(_) => match env::var("SAMPLE") {
+                    Ok(_) => {
+                        return Err(SAMPLE.to_string());
+                    }
+                    Err(_) => {
+                        return Err(format!(
+                        "Unable to open the workgroups definition file for the week starting on {} at {}.\nRerun the same command with SAMPLE=1 for a sample json file.",
                         start, allocation_file_path
                     ));
-                }
+                    }
+                },
             }
         }
         _ => {
