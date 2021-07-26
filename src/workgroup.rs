@@ -83,42 +83,81 @@ pub fn get_workgroups(twinput: &TimeWarriorInput) -> Result<Vec<WorkGroup>, Stri
     let duration = end.signed_duration_since(start);
 
     let config_dir = env::var("HOME").unwrap() + "/.timewarrior/aggregate";
-    let start = Local.from_utc_datetime(&start).date();
-    let end = Local.from_utc_datetime(&end).date();
+    let start = Local.from_utc_datetime(&start).date().naive_local();
+    let end = Local.from_utc_datetime(&end).date().naive_local();
+    let year = start.year();
+    let month = start.month();
+    let day = start.day();
 
     let allocation_file_path;
-    if duration.num_days() == 1 {
-        let year = start.year();
-        let month = start.month();
-        let day = start.day();
-        allocation_file_path = format!("{}/allocation/{}/{}/{}.json", config_dir, year, month, day);
-    } else if duration.num_days() == 7 {
-        let year = start.year();
-        let month = start.month();
-        let day = start.day();
-        allocation_file_path = format!(
-            "{}/allocation/{}/{}/week-of-{}.json",
-            config_dir, year, month, day
-        );
-    } else {
-        return Err(format!(
-            "Unsupported duration of {} days. Start = {}, End = {}",
-            duration.num_days(),
-            start,
-            end
-        )
-        .to_string());
-    }
+    let allocation_file_contents = match duration.num_days() {
+        1 => {
+            allocation_file_path =
+                format!("{}/allocation/{}/{}/{}.json", config_dir, year, month, day);
+            debug!(
+                "Looking for workgroups definition at {}",
+                &allocation_file_path
+            );
+            match fs::read_to_string(&allocation_file_path) {
+                Ok(val) => val,
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to open the workgroups definition file for the day {} at {}",
+                        start, allocation_file_path
+                    ));
+                }
+            }
+        }
+        7 => {
+            allocation_file_path = format!(
+                "{}/allocation/{}/{}/week-of-{}.json",
+                config_dir, year, month, day
+            );
+            debug!(
+                "Looking for workgroups definition at {}",
+                &allocation_file_path
+            );
+            match fs::read_to_string(&allocation_file_path) {
+                Ok(val) => val,
+                Err(_) => {
+                    return Err(format!(
+                        "Unable to open the workgroups definition file for the week starting on {} at {}",
+                        start, allocation_file_path
+                    ));
+                }
+            }
+        }
+        _ => {
+            return Err(format!(
+                "Unsupported duration of {} days. Start = {}, End = {}. Only range of one day or one week is supported",
+                duration.num_days(),
+                start,
+                end
+            ));
+        }
+    };
 
-    debug!("allocation_file_path {}", allocation_file_path);
+    let parsed_json = match json::parse(&allocation_file_contents) {
+        Ok(val) => val,
+        Err(err) => {
+            return Err(format!(
+                "Unable to parse the json file at {}\nError: '{}'",
+                allocation_file_path, err
+            ));
+        }
+    };
 
-    let error_msg = format!("Unable to read file {}", allocation_file_path);
-    let allocation_file_contents = fs::read_to_string(allocation_file_path).expect(&error_msg);
-    let parsed_json = json::parse(&allocation_file_contents).expect("Unable to parse json file");
     let mut workgroups = Vec::new();
     for jv in parsed_json.members() {
         workgroups.push(WorkGroup::parse_from_json_value(jv));
     }
+    if workgroups.len() == 0 {
+        return Err(format!(
+            "No workgroups found in the json file at {}",
+            allocation_file_path,
+        ));
+    }
+
     Ok(workgroups)
 }
 

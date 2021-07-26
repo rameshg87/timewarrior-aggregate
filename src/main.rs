@@ -21,8 +21,21 @@ fn main() {
     io::stdin()
         .read_to_string(&mut buffer)
         .expect("Unable to read standard input");
-    let twinput = TimeWarriorInput::parse_from_str(&buffer);
-    let mut workgroups = workgroup::get_workgroups(&twinput).unwrap();
+    let twinput = match TimeWarriorInput::parse_from_str(&buffer) {
+        Ok(val) => val,
+        Err(error) => {
+            print!("{}", error);
+            std::process::exit(1);
+        }
+    };
+
+    let mut workgroups = match workgroup::get_workgroups(&twinput) {
+        Ok(val) => val,
+        Err(error) => {
+            print!("{}", error);
+            std::process::exit(1);
+        }
+    };
     workgroup::process(&twinput, &mut workgroups);
     workgroup::print_result(&workgroups);
 }
