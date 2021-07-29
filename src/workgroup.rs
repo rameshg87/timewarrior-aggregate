@@ -12,7 +12,7 @@ use log::debug;
 use crate::twentry::TimeWarriorEntry;
 use crate::twinput::TimeWarriorInput;
 
-static SAMPLE: &'static str = "Here is a sample config to get started:
+static SAMPLE: &'static str = "
 [
     {
         \"tags\": [
@@ -34,7 +34,7 @@ static SAMPLE: &'static str = "Here is a sample config to get started:
             \"review\"
         ],
         \"allocation\": 1
-    },
+    }
 ]
 ";
 

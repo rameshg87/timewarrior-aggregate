@@ -53,7 +53,10 @@ The binary should be installed as a timewarrior extension at
 
 ### Configuration
 
-The usage of the extension is to help plan a day or a week.
+The usage of the extension is to help plan a day or a week. The task groups to
+be tracked and their allocation for a day or a week is stored in separate JSON
+files. All the files are rooted at ~/.timewarrior/aggregate/allocation. This is
+followed by a file of the format `<year>/<month>/<day>.json`.
 
 We get the below when we try to run the aggregate extension for the day initially.
 ```
@@ -192,7 +195,7 @@ $ timew aggregate :day
 | learning personal    | 0 hrs 41 mins   | 1 hrs 15 mins   | 0 hrs 33 mins
 | total                | 7 hrs 54 mins   | 8 hrs 30 mins   | 0 hrs 35 mins
 ```
-Negative number indicate exhausting the allocated time.
+Negative number indicates exhausting the allocated time.
 
 The aggregate extension for the week at the time of writing this document looks
 like below:
