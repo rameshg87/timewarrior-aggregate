@@ -209,3 +209,10 @@ $ timew aggregate :week
 | learning personal    | 2 hrs 53 mins   | 10 hrs 30 mins  | 7 hrs 36 mins
 | total                | 33 hrs 33 mins  | 53 hrs 0 mins   | 19 hrs 26 mins
 ```
+
+The final status of a past day or a week can be viewed by using the date range
+feature in timewarrior. Some examples are given below:
+```
+$ timew aggregate 2021-07-19 to 2021-07-26
+$ timew aggregate 2021-07-21 to 2021-07-22
+```
