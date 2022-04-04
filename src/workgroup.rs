@@ -216,11 +216,9 @@ pub fn print_result(workgroups: &Vec<WorkGroup>) {
     let mut total_spent = Duration::seconds(0);
     let mut total_allocated = Duration::seconds(0);
     for workgroup in workgroups {
-        if workgroup.time_spent.num_seconds() > 0 {
-            println!("{}", workgroup);
-            total_spent = total_spent.add(workgroup.time_spent);
-            total_allocated = total_allocated.add(workgroup.time_allocated);
-        }
+        println!("{}", workgroup);
+        total_spent = total_spent.add(workgroup.time_spent);
+        total_allocated = total_allocated.add(workgroup.time_allocated);
     }
 
     let total_remaining = match total_allocated.checked_sub(&total_spent) {
